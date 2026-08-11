@@ -10,7 +10,7 @@
     "start:worker": "pnpm --filter @temporal-workflow-engine/worker run start:dev",
     "start:designer": "pnpm --filter @temporal-workflow-engine/designer run dev",
     "format": "prettier --write \"**/*.{ts,tsx,json}\"",
-    "temporal:dev-server": "temporal server start-dev --db-filename temporal.db"
+    "temporal:dev-server": "node scripts/temporal-dev-server.mjs"
   },
   "keywords": [
     "temporal",

@@ -29,6 +29,12 @@ pnpm start:worker
 pnpm start:designer
 ```
 
+`pnpm temporal:dev-server` requires the Temporal CLI. On macOS:
+
+```bash
+brew install temporal
+```
+
 ## Phase 1
 
 1. Lock the workflow definition and step schema

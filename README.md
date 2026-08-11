@@ -29,6 +29,12 @@ pnpm start:worker
 pnpm start:designer
 ```
 
+`pnpm temporal:dev-server` 需要本机安装 Temporal CLI。macOS 可用：
+
+```bash
+brew install temporal
+```
+
 ## 第一阶段要做什么
 
 1. 固化 workflow definition 和 step schema
