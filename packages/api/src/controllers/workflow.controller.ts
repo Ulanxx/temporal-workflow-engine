@@ -58,6 +58,46 @@ export class WorkflowController {
     }
   }
 
+  @Get(':id/draft')
+  getDraft(@Param('id') id: string) {
+    const draft = this.workflowService.getDraft(id);
+    if (!draft) throw new HttpException('工作流草稿不存在', HttpStatus.NOT_FOUND);
+    return draft;
+  }
+
+  @Put(':id/draft')
+  saveDraft(@Param('id') id: string, @Body() body: { revision: number; definition: unknown }) {
+    try {
+      return this.workflowService.saveDraft(id, body.revision, body.definition as any);
+    } catch (error: any) {
+      throw new HttpException(error.message, error.actualRevision ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Post(':id/validate')
+  validateDraft(@Param('id') id: string) {
+    return this.workflowService.validateDraft(id);
+  }
+
+  @Post(':id/publish')
+  publishDraft(@Param('id') id: string, @Body() body: { changeSummary?: string }) {
+    try {
+      return this.workflowService.publishDraft(id, body.changeSummary);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get(':id/versions')
+  listVersions(@Param('id') id: string) {
+    return this.workflowService.listVersions(id);
+  }
+
+  @Get('/catalog/nodes')
+  getNodeCatalog() {
+    return this.workflowService.getNodeCatalog();
+  }
+
   @Post()
   async create(@Body() createWorkflowDto: CreateWorkflowDto) {
     try {

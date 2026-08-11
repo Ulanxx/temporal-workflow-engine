@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import {
   JsonObject,
+  nodeCatalog,
   NodeType,
   RunStatus,
   Workflow,
@@ -65,6 +66,30 @@ export class WorkflowService implements OnModuleDestroy {
 
   async findById(id: string): Promise<Workflow | null> {
     return this.toLegacyWorkflow(id);
+  }
+
+  getDraft(workflowId: string) {
+    return this.repository.getDraft(workflowId);
+  }
+
+  saveDraft(workflowId: string, revision: number, definition: WorkflowDefinition) {
+    return this.repository.saveDraft(workflowId, revision, definition);
+  }
+
+  validateDraft(workflowId: string) {
+    return this.repository.validateDraft(workflowId);
+  }
+
+  publishDraft(workflowId: string, changeSummary?: string) {
+    return this.repository.publishDraft(workflowId, changeSummary);
+  }
+
+  listVersions(workflowId: string) {
+    return this.repository.listVersions(workflowId);
+  }
+
+  getNodeCatalog() {
+    return nodeCatalog.map(({ configSchema: _configSchema, ...definition }) => definition);
   }
 
   async create(workflow: Partial<Workflow>): Promise<Workflow> {
