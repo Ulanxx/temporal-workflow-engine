@@ -552,8 +552,8 @@ Use Playwright at 1440x900, 1280x800, and 390x844.
 The primary scenario must:
 
 1. open the bundled AI content review workflow;
-2. reconfigure the existing notification node;
-3. connect it and pass validation;
+2. change the target of the existing, connected notification node;
+3. pass graph and configuration validation;
 4. publish a new immutable version;
 5. run with sample input;
 6. observe live node status;
