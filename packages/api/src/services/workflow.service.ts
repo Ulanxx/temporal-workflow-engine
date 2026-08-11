@@ -1,182 +1,143 @@
-import { Injectable } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
-import { 
-  Workflow, 
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import {
+  JsonObject,
+  NodeType,
+  RunStatus,
+  Workflow,
+  WorkflowDefinition,
   WorkflowExecution,
-  WorkflowExecutionStatus
+  WorkflowExecutionStatus,
+  WorkflowNode,
 } from '@temporal-workflow-engine/shared';
+import {
+  createPersistenceDatabase,
+  PersistenceDatabase,
+  WorkflowRepository,
+} from '@temporal-workflow-engine/persistence';
 import { TemporalService } from './temporal.service';
 
-// 简单内存存储，实际项目应使用数据库
-const workflows = new Map<string, Workflow>();
-const executions = new Map<string, WorkflowExecution>();
+function toDefinition(nodes: WorkflowNode[] = [], edges: Workflow['edges'] = []): WorkflowDefinition {
+  return {
+    schemaVersion: 1,
+    nodes: nodes.map((node) => ({
+      ...node,
+      type: node.type ?? NodeType.TASK,
+      config: node.config ?? {},
+      position: node.position ?? { x: 0, y: 0 },
+    })),
+    edges,
+  };
+}
 
 @Injectable()
-export class WorkflowService {
-  constructor(private readonly temporalService: TemporalService) {}
+export class WorkflowService implements OnModuleDestroy {
+  private readonly database: PersistenceDatabase = createPersistenceDatabase();
+  private readonly repository = new WorkflowRepository(this.database);
 
-  /**
-   * 获取所有工作流
-   */
+  constructor(private readonly temporalService: TemporalService) {
+    this.repository.seedDefaults();
+  }
+
+  onModuleDestroy(): void {
+    this.database.close();
+  }
+
+  private toLegacyWorkflow(workflowId: string): Workflow | null {
+    const asset = this.repository.getWorkflow(workflowId);
+    const draft = this.repository.getDraft(workflowId);
+    if (!asset || !draft) return null;
+    const version = asset.publishedVersionId ? this.repository.getVersion(asset.publishedVersionId) : undefined;
+    return {
+      id: asset.id,
+      name: asset.name,
+      description: asset.description,
+      version: String(version?.version ?? 0),
+      nodes: draft.definition.nodes,
+      edges: draft.definition.edges,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+    };
+  }
+
   async findAll(): Promise<Workflow[]> {
-    return Array.from(workflows.values());
+    return this.repository.listWorkflows().map((workflow) => this.toLegacyWorkflow(workflow.id)!).filter(Boolean);
   }
 
-  /**
-   * 根据ID获取工作流
-   */
   async findById(id: string): Promise<Workflow | null> {
-    return workflows.get(id) || null;
+    return this.toLegacyWorkflow(id);
   }
 
-  /**
-   * 创建工作流
-   */
   async create(workflow: Partial<Workflow>): Promise<Workflow> {
-    const id = uuidv4();
-    const now = new Date().toISOString();
-    
-    const newWorkflow: Workflow = {
-      id,
-      name: workflow.name || `工作流 ${id.substring(0, 8)}`,
-      description: workflow.description || '',
-      version: '1.0.0',
-      nodes: workflow.nodes || [],
-      edges: workflow.edges || [],
-      createdAt: now,
-      updatedAt: now
-    };
-    
-    workflows.set(id, newWorkflow);
-    return newWorkflow;
-  }
-
-  /**
-   * 更新工作流
-   */
-  async update(id: string, workflow: Partial<Workflow>): Promise<Workflow | null> {
-    const existingWorkflow = workflows.get(id);
-    
-    if (!existingWorkflow) {
-      return null;
-    }
-    
-    // 创建更新后的工作流副本
-    const updatedWorkflow: Workflow = {
-      ...existingWorkflow,
-      ...workflow,
-      updatedAt: new Date().toISOString()
-    };
-    
-    // 如果更新了节点或边，自动更新版本号
-    if (workflow.nodes || workflow.edges) {
-      const [major, minor, patch] = existingWorkflow.version.split('.').map(Number);
-      updatedWorkflow.version = `${major}.${minor}.${patch + 1}`;
-    }
-    
-    workflows.set(id, updatedWorkflow);
-    return updatedWorkflow;
-  }
-
-  /**
-   * 删除工作流
-   */
-  async remove(id: string): Promise<boolean> {
-    return workflows.delete(id);
-  }
-
-  /**
-   * 执行工作流
-   */
-  async executeWorkflow(
-    workflowId: string, 
-    input?: Record<string, any>
-  ): Promise<WorkflowExecution> {
-    const workflow = workflows.get(workflowId);
-    
-    if (!workflow) {
-      throw new Error(`工作流不存在: ${workflowId}`);
-    }
-    
-    const execution = await this.temporalService.executeWorkflow(
-      workflowId,
-      workflow,
-      input
+    const asset = this.repository.createWorkflow(
+      workflow.name || '未命名工作流',
+      workflow.description || '',
+      toDefinition(workflow.nodes, workflow.edges),
     );
-    
-    // 保存执行记录
-    executions.set(execution.id, execution);
-    
+    return this.toLegacyWorkflow(asset.id)!;
+  }
+
+  async update(id: string, workflow: Partial<Workflow>): Promise<Workflow | null> {
+    const current = this.repository.getDraft(id);
+    const asset = this.repository.getWorkflow(id);
+    if (!current || !asset) return null;
+    const definition = workflow.nodes || workflow.edges
+      ? toDefinition(workflow.nodes ?? current.definition.nodes, workflow.edges ?? current.definition.edges)
+      : current.definition;
+    this.repository.saveDraft(id, current.revision, definition);
+    if (workflow.name || workflow.description !== undefined) {
+      this.database.client.prepare('UPDATE workflows SET name = ?, description = ?, updated_at = ? WHERE id = ?')
+        .run(workflow.name ?? asset.name, workflow.description ?? asset.description, new Date().toISOString(), id);
+    }
+    return this.toLegacyWorkflow(id);
+  }
+
+  async remove(id: string): Promise<boolean> {
+    const result = this.database.client.prepare("UPDATE workflows SET status = 'archived', updated_at = ? WHERE id = ? AND status = 'active'")
+      .run(new Date().toISOString(), id);
+    return result.changes > 0;
+  }
+
+  async executeWorkflow(workflowId: string, input?: Record<string, unknown>): Promise<WorkflowExecution> {
+    const workflow = this.toLegacyWorkflow(workflowId);
+    if (!workflow) throw new Error('工作流不存在。');
+    const execution = await this.temporalService.executeWorkflow(workflowId, workflow, input);
+    const asset = this.repository.getWorkflow(workflowId)!;
+    let version = asset.publishedVersionId ? this.repository.getVersion(asset.publishedVersionId) : undefined;
+    if (!version) version = this.repository.publishDraft(workflowId);
+    this.repository.createRun({
+      id: execution.id,
+      workflowId,
+      versionId: version.id,
+      definitionChecksum: version.checksum,
+      status: RunStatus.PENDING,
+      triggerType: NodeType.MANUAL_TRIGGER,
+      input: (input ?? {}) as JsonObject,
+      temporalWorkflowId: `workflow-run-${execution.id}`,
+    });
     return execution;
   }
 
-  /**
-   * 获取所有工作流执行记录
-   */
-  async getAllExecutions(): Promise<WorkflowExecution[]> {
-    return Array.from(executions.values());
-  }
-
-  /**
-   * 获取特定工作流的所有执行记录
-   */
   async getWorkflowExecutions(workflowId: string): Promise<WorkflowExecution[]> {
-    return Array.from(executions.values())
-      .filter(execution => execution.workflowId === workflowId);
+    const rows = this.database.client.prepare('SELECT * FROM runs WHERE workflow_id = ? ORDER BY created_at DESC').all(workflowId) as Array<{ id: string; status: WorkflowExecutionStatus; created_at: string; ended_at: string | null; output_json: string | null; failure_message: string | null }>;
+    return rows.map((row) => ({ id: row.id, workflowId, status: row.status, startTime: row.created_at, endTime: row.ended_at ?? undefined, result: row.output_json ? JSON.parse(row.output_json) : undefined, error: row.failure_message ?? undefined }));
   }
 
-  /**
-   * 获取执行记录
-   */
   async getExecution(executionId: string): Promise<WorkflowExecution | null> {
-    return executions.get(executionId) || null;
+    const run = this.repository.getRun(executionId);
+    if (!run) return null;
+    return { id: run.id, workflowId: run.workflowId, status: run.status as unknown as WorkflowExecutionStatus, startTime: run.createdAt, endTime: run.endedAt, result: run.output, error: run.failureMessage };
   }
 
-  /**
-   * 获取工作流执行状态
-   */
-  async getWorkflowStatus(executionId: string): Promise<any> {
+  async getWorkflowStatus(executionId: string): Promise<WorkflowExecution> {
     const execution = await this.getExecution(executionId);
-    
-    if (!execution) {
-      throw new Error(`执行记录不存在: ${executionId}`);
-    }
-    
+    if (!execution) throw new Error('执行记录不存在。');
     const status = await this.temporalService.getWorkflowStatus(executionId);
-    
-    // 更新执行记录状态
-    const updatedExecution: WorkflowExecution = {
-      ...execution,
-      status: status.status,
-      endTime: status.status !== WorkflowExecutionStatus.RUNNING ? new Date().toISOString() : undefined,
-      result: status.result,
-      error: status.error
-    };
-    
-    executions.set(executionId, updatedExecution);
-    
-    return status;
+    return { ...execution, status: status.status, endTime: status.status === WorkflowExecutionStatus.RUNNING ? undefined : new Date().toISOString(), result: status.result ?? undefined, error: status.error ?? undefined };
   }
 
-  /**
-   * 取消工作流执行
-   */
   async cancelWorkflow(executionId: string): Promise<boolean> {
-    const execution = await this.getExecution(executionId);
-    
-    if (!execution) {
-      throw new Error(`执行记录不存在: ${executionId}`);
-    }
-    
-    const result = await this.temporalService.cancelWorkflow(executionId);
-    
-    if (result) {
-      // 更新执行记录状态
-      execution.status = WorkflowExecutionStatus.CANCELED;
-      execution.endTime = new Date().toISOString();
-      executions.set(executionId, execution);
-    }
-    
-    return result;
+    await this.temporalService.cancelWorkflow(executionId);
+    this.database.client.prepare("UPDATE runs SET status = ?, ended_at = ? WHERE id = ?").run(RunStatus.CANCELED, new Date().toISOString(), executionId);
+    return true;
   }
 }
