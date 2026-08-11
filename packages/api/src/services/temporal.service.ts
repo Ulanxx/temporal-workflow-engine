@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class TemporalService {
-  private client: Client;
+  private client?: Client;
   private readonly taskQueue = 'workflow-engine-task-queue';
 
   constructor() {
@@ -32,8 +32,7 @@ export class TemporalService {
 
       console.log('已连接到Temporal服务');
     } catch (error: any) {
-      console.error('连接Temporal服务失败:', error);
-      throw error;
+      console.warn('Temporal 服务暂不可用；流程编辑与本地持久化仍可正常使用。', error instanceof Error ? error.message : error);
     }
   }
 
@@ -47,15 +46,13 @@ export class TemporalService {
   ): Promise<WorkflowExecution> {
     try {
       // 确保客户端已初始化
-      if (!this.client) {
-        await this.init();
-      }
+      const client = await this.requireClient();
 
       // 生成执行ID
       const executionId = uuidv4();
       
       // 启动工作流执行
-      const handle = await this.client.workflow.start('executeWorkflowRun', {
+      const handle = await client.workflow.start('executeWorkflowRun', {
         taskQueue: this.taskQueue,
         workflowId: `workflow-run-${executionId}`,
         args: [{
@@ -90,11 +87,9 @@ export class TemporalService {
   async getWorkflowStatus(executionId: string): Promise<any> {
     try {
       // 确保客户端已初始化
-      if (!this.client) {
-        await this.init();
-      }
+      const client = await this.requireClient();
 
-      const handle = await this.client.workflow.getHandle(`workflow-run-${executionId}`);
+      const handle = await client.workflow.getHandle(`workflow-run-${executionId}`);
       const description = await handle.describe();
 
       // 检查工作流状态
@@ -134,11 +129,9 @@ export class TemporalService {
   async cancelWorkflow(executionId: string): Promise<boolean> {
     try {
       // 确保客户端已初始化
-      if (!this.client) {
-        await this.init();
-      }
+      const client = await this.requireClient();
 
-      const handle = await this.client.workflow.getHandle(`workflow-run-${executionId}`);
+      const handle = await client.workflow.getHandle(`workflow-run-${executionId}`);
       await handle.cancel();
       
       return true;
@@ -146,5 +139,11 @@ export class TemporalService {
       console.error('取消工作流失败:', error);
       throw error;
     }
+  }
+
+  private async requireClient(): Promise<Client> {
+    if (!this.client) await this.init();
+    if (!this.client) throw new Error('Temporal 服务不可用。请先启动 temporal:dev-server。');
+    return this.client;
   }
 }
