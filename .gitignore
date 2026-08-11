@@ -66,6 +66,9 @@ playwright/.cache/
 # Local dev window state
 .dev/
 
+# Local design exploration
+.superpowers/
+
 # Package specific
 packages/*/dist/
 packages/*/node_modules/
