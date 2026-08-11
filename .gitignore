@@ -66,6 +66,9 @@ playwright/.cache/
 # Local dev window state
 .dev/
 
+# Local workflow runtime data
+.runtime/
+
 # Local design exploration
 .superpowers/
 
