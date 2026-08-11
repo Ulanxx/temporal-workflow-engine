@@ -54,7 +54,7 @@ The primary user is a technical operator or developer who can understand HTTP, J
 
 The bundled example is an AI content review workflow:
 
-`Webhook -> Data validation -> LLM analysis -> Risk condition -> Human approval -> HTTP publish -> Notification`
+`Webhook -> Data validation -> LLM analysis -> Risk condition -> Human approval -> HTTP publish -> Notification -> End`
 
 This example must be usable as a real acceptance path, including an approval wait and an intentionally recoverable HTTP failure.
 
@@ -228,12 +228,12 @@ An unavailable extension remains selectable and configurable. Its Inspector name
 | --- | --- | --- |
 | Trigger | Manual, Webhook, Schedule, Event Subscription | first three |
 | AI | Model Call, Agent, MCP Tool, Knowledge Retrieval | Model Call, MCP Tool |
-| Flow Control | Condition, Switch, Parallel, Merge, Loop, Wait, Child Workflow | all except Child Workflow |
+| Flow Control | Condition, Switch, Parallel, Merge, Loop, Wait, Child Workflow, End | all except Child Workflow |
 | Data | Set Variable, Transform, Filter, Aggregate, Schema Validate | Set Variable, Transform, Schema Validate |
 | Action | HTTP Request, Script, Browser, Database, Notification, File | HTTP, Script, Browser, Notification |
 | Human | Approval, Information Request | both |
 
-This yields 28 stable node definitions and 20 executable nodes.
+This yields 29 stable node definitions and 21 executable nodes. `End` is an explicit deterministic terminal node whose outcome is `success` or `failure`.
 
 ### 7.3 Node anatomy
 
@@ -258,9 +258,20 @@ Category distinctions are structural, not arbitrary colors:
 - `control`: normal execution order;
 - `condition`: labeled business branch with expression summary;
 - `error`: explicit failure/timeout/retry-exhausted route;
-- `data`: dashed reference visualization, not an execution edge.
+- `data`: a derived dashed visualization of an expression reference, not an independently editable execution edge.
 
-Branch edges must have unique labels. A condition/switch node must have a default path unless validation proves exhaustiveness. Normal action nodes allow one control successor; fan-out requires a Parallel node. Merge nodes define `all` or `any` behavior.
+Branch edges must have unique labels. A condition/switch node must have a default path unless validation proves exhaustiveness. Normal action nodes allow one control successor; fan-out requires a Parallel node.
+
+Control-node semantics are fixed for the first release:
+
+- **Parallel** opens named branch scopes. Every branch must terminate at the matching Merge node. No control edge may enter a branch from outside its scope.
+- **Merge all** waits for every branch. An unhandled branch failure cancels outstanding branch Activity scopes and fails the Run. Outputs are namespaced by branch ID.
+- **Merge any** completes on the first successful branch, cancels outstanding branch Activity scopes, and exposes `{ winner, branches }`. If every branch fails, the Merge fails. Temporal History ordering decides simultaneous completion; branch names provide stable output identity.
+- **Loop** is collection iteration in the first release. It has `body` and `done` ports, requires a finite input collection and `maximumIterations`, and records outputs as an array ordered by zero-based iteration index. The body returns only to its owning Loop node. General while loops are deferred.
+- **Error edge** runs only after the source node exhausts its retry policy. It receives a bounded structured error output. A node with a taken error edge is recorded as `failed_handled`; the Run may complete with warnings. Without an error edge, the failure propagates to the enclosing Parallel scope or Run.
+- **End** is the only legal control-path terminal. An End configured as `failure` terminates the Run with its supplied code and message.
+
+Data-reference edges are generated from configuration expressions such as `steps.analyze.output.score`; users do not draw them directly. Control edges alone determine scheduling. A referenced output is ready only after its producing invocation completes. Validation requires the producer to dominate the consumer on every possible control path, or to be exposed by the consumer's matching Merge. Loop-body references are scoped to the current iteration unless they explicitly target the Loop aggregate output.
 
 ### 7.5 Graph validation
 
@@ -268,12 +279,13 @@ Publication fails when any of these are true:
 
 - trigger count is not exactly one for a published workflow;
 - an executable node is unreachable;
-- a control path can terminate without a terminal state;
+- a control path can terminate without an explicit End node;
 - a typed port connection is incompatible;
 - a required node configuration is invalid;
 - branch labels conflict or no fallback exists;
 - a cycle does not pass through a Loop node;
 - Parallel branches do not have a valid Merge boundary;
+- a data reference does not dominate its consumer or crosses an invalid branch/iteration scope;
 - an adapter is unavailable;
 - a credential reference is missing;
 - an expression references an unavailable output path.
@@ -314,10 +326,12 @@ Every Run records:
 - optional source run for recovery;
 - final output or failure summary.
 
+Every dynamic node execution is a **step invocation** with a stable `invocationId`. The ID is derived from the Run, node ID, named branch path, and loop iteration path. Activity attempts belong to an invocation and do not change its ID. Parallel branches and loop iterations may therefore create multiple invocations for one catalog node without making approvals, events, or recovery ambiguous.
+
 ### 8.5 Recovery
 
 - **Activity retry** remains inside the current Temporal Run and follows node policy.
-- **Resume from failed node** creates a derived Run with `resumedFromRunId`. It reuses persisted outputs only from steps proven successful in the same immutable definition version.
+- **Resume from failed node** targets a specific failed `invocationId` and creates a derived Run with `resumedFromRunId` and `resumedFromInvocationId`. It reuses persisted outputs only from invocations proven successful in the same immutable definition checksum. The default target is the first unhandled failed leaf in event-sequence order.
 - **Rerun** creates a fresh Run with the same version and input.
 - **Clone and fix** creates a draft from the run's version; publishing it creates a new version before execution.
 
@@ -340,6 +354,8 @@ Workflow Queries expose a compact current-state snapshot. Signals handle approva
 
 Large payloads are not retained in Workflow History. Activities write screenshots, files, large model responses, and browser traces to artifact storage and return bounded metadata plus a URI.
 
+Approval and information nodes create a persisted wait request with a unique `waitId`, `invocationId`, expected response schema, status, and expiration. The corresponding Temporal Signal includes both IDs. Approve/respond commands target the wait request rather than a node ID, so concurrent branches and loop iterations remain unambiguous.
+
 ### 9.3 Expressions and scripts
 
 - conditions, mappings, and variable references use a constrained expression parser with an allowlisted grammar;
@@ -351,7 +367,7 @@ Large payloads are not retained in Workflow History. Activities write screenshot
 
 ## 10. Persistence Model
 
-Use Drizzle with SQLite for local development. Keep repository interfaces database-agnostic so Postgres can replace SQLite without changing services.
+Use Drizzle with SQLite for local development. Define only narrow repository interfaces around the listed entities; do not build a generic persistence framework. The boundary should permit a later Postgres implementation without adding first-release abstractions for unused databases.
 
 Core entities:
 
@@ -361,11 +377,19 @@ Core entities:
 - `runs`;
 - `run_steps`;
 - `run_events`;
+- `run_waits`;
 - `artifacts`;
+- `workflow_triggers`;
 - `credential_references`;
 - `adapter_status`.
 
-`run_events` has a unique `(run_id, sequence)` key. SQLite runs in WAL mode because API reads and Worker event writes occur from separate processes.
+`run_steps` stores one row per invocation, including `invocation_id`, node ID, branch path, iteration path, status, attempt count, and bounded input/output summaries. `run_waits` links approval or information requests to a specific invocation.
+
+`workflow_triggers` stores trigger ID, workflow ID, trigger type, enabled state, configuration, credential/secret reference, version policy (`latest` or `pinned`), pinned version when applicable, and external registration ID such as a Temporal Schedule ID.
+
+`runs` stores `next_event_sequence`. A Worker event-writer Activity allocates a sequence and inserts the event in one SQLite `BEGIN IMMEDIATE` transaction. Each event also carries a deterministic idempotency key based on Run, invocation, event type, attempt, and occurrence; duplicate writes return the existing event. Sequence order is commit/observation order for concurrent branches, not a claim about logical branch precedence.
+
+`run_events` has unique `(run_id, sequence)` and `(run_id, idempotency_key)` keys. SQLite runs in WAL mode because API reads and Worker event writes occur from separate processes. For the first release, API SSE handlers replay persisted events and poll for newer committed sequences at a bounded interval; they do not rely on in-process notifications from the Worker. This makes cross-process delivery correct before a later Postgres notification implementation exists.
 
 Artifact metadata is stored in the database. Local development stores artifact files under a configured repository-local runtime directory ignored by Git. The storage interface supports an object-store implementation later.
 
@@ -394,6 +418,18 @@ The exact DTO shapes are defined during implementation, but route ownership is f
 - `GET /api/integrations`
 - `PUT /api/integrations/:adapterId`
 
+### Trigger lifecycle
+
+- `GET /api/workflows/:workflowId/triggers`
+- `POST /api/workflows/:workflowId/triggers`
+- `PUT /api/workflows/:workflowId/triggers/:triggerId`
+- `POST /api/workflows/:workflowId/triggers/:triggerId/enable`
+- `POST /api/workflows/:workflowId/triggers/:triggerId/disable`
+- `DELETE /api/workflows/:workflowId/triggers/:triggerId`
+- `POST /api/hooks/:triggerId/:token`
+
+Webhook creation returns the public path once and persists only a token hash. An enabled webhook resolves its `latest` or `pinned` version policy at request time, creates a Run, and returns `202` with the Run ID. Schedule trigger enable/update creates or updates a Temporal Schedule using the external registration ID; disable pauses it, and delete removes it. Publishing a workflow updates `latest` trigger metadata without rewriting historical Runs.
+
 ### Run commands and queries
 
 - `GET /api/runs`
@@ -402,10 +438,20 @@ The exact DTO shapes are defined during implementation, but route ownership is f
 - `GET /api/runs/:runId/events`
 - `GET /api/runs/:runId/stream`
 - `POST /api/runs/:runId/cancel`
-- `POST /api/runs/:runId/approve`
-- `POST /api/runs/:runId/respond`
+- `POST /api/runs/:runId/waits/:waitId/approve`
+- `POST /api/runs/:runId/waits/:waitId/respond`
 - `POST /api/runs/:runId/rerun`
-- `POST /api/runs/:runId/resume`
+- `POST /api/runs/:runId/resume` with `invocationId`
+
+### Health, settings, and artifacts
+
+- `GET /api/health`
+- `GET /api/settings/runtime`
+- `PUT /api/settings/runtime`
+- `GET /api/artifacts/:artifactId`
+- `GET /api/artifacts/:artifactId/content`
+
+Health reports database, Temporal, and Worker states separately. Worker health comes from a bounded heartbeat record plus Temporal task-queue poller inspection. Runtime settings only manage non-secret local configuration; environment values remain read-only and are identified as such. Artifact content verifies the database record, resolves only storage-managed paths/URIs, uses safe content headers, and supports download without exposing arbitrary filesystem paths.
 
 All commands accept an idempotency key. Error responses use stable machine-readable codes and human-readable Chinese messages.
 
@@ -413,10 +459,10 @@ All commands accept an idempotency key. Error responses use stable machine-reada
 
 The first release uses Server-Sent Events.
 
-- events have monotonic per-run sequence numbers;
+- events have monotonic per-run sequence numbers allocated transactionally at persistence commit;
 - the SSE event ID equals the run event sequence;
 - clients reconnect with `Last-Event-ID`;
-- the server replays persisted events after that sequence before switching to live delivery;
+- the server replays persisted events after that sequence before entering bounded database polling for live delivery;
 - duplicate events are ignored by `(runId, sequence)`;
 - the frontend falls back to snapshot refetch when the requested sequence has expired or continuity cannot be proven;
 - terminal states close the live stream after a final snapshot event.
@@ -486,7 +532,7 @@ Representative event types:
 - identical publish checksum does not create another version;
 - run binds immutable version and input;
 - SSE replay resumes from `Last-Event-ID`;
-- approval and cancel commands are idempotent;
+- approval by `waitId` and cancel commands are idempotent;
 - database state survives API restart;
 - Temporal-offline health and command behavior are explicit.
 
@@ -506,7 +552,7 @@ Use Playwright at 1440x900, 1280x800, and 390x844.
 The primary scenario must:
 
 1. open the bundled AI content review workflow;
-2. add and configure a notification node;
+2. reconfigure the existing notification node;
 3. connect it and pass validation;
 4. publish a new immutable version;
 5. run with sample input;
@@ -524,7 +570,7 @@ The first implementation delivers:
 
 - all product routes and responsive surfaces listed in this document;
 - the ZMZ AI-derived design system without Ant Design;
-- 28 catalog definitions, 20 executable nodes, and explicit extension status for eight nodes;
+- 29 catalog definitions, 21 executable nodes, and explicit extension status for eight nodes;
 - draft autosave, validation, immutable publishing, version list, and version detail;
 - run start, live events, run detail, approval, cancellation, rerun, and recovery;
 - SQLite persistence and local artifact storage;
@@ -532,6 +578,20 @@ The first implementation delivers:
 - unit, integration, and Playwright acceptance coverage.
 
 Implementation may be staged internally, but the repository should not present partial navigation, fake buttons, or unlabelled unavailable features as completed behavior.
+
+### 16.1 Implementation stages
+
+Planning must preserve this dependency order:
+
+1. **Shared contracts**: node registry, canonical definition, schemas, graph validator, invocation identity, and event types.
+2. **Persistence and seed**: SQLite schema, narrow repositories, migration runner, artifact storage, and the bundled acceptance fixture.
+3. **Execution and projection**: deterministic graph workflow, Activity adapters, wait Signals, event writer, trigger registration, recovery, and reconciliation.
+4. **Control-plane API**: workflow/draft/version, catalog/integration, trigger, run command/query, SSE, health/settings, and artifact routes.
+5. **Workbench shell**: design tokens, routes, workflow library, integration/settings surfaces, and responsive navigation.
+6. **Designer and observer**: graph store, node/edge rendering, Inspector registry, validation, versions, Run Drawer, Run Center, and Run Detail.
+7. **Acceptance hardening**: unit/integration/browser tests, deterministic demo mode, screenshots, README, and startup verification.
+
+A stage may expose internal routes or test harnesses needed by the next stage. User-facing navigation remains hidden until its commands and error states are functional.
 
 ## 17. Acceptance Criteria
 
@@ -541,10 +601,9 @@ The redesign is complete when:
 - the bundled workflow is present and survives restarts;
 - a user can edit, validate, publish, execute, approve, inspect failure, and recover without using Temporal UI;
 - every visible command either works or clearly reports the missing external adapter/configuration;
-- all 28 nodes render consistently and expose schema-backed configuration;
+- all 29 nodes render consistently and expose schema-backed configuration;
 - run topology and detail agree after refresh and SSE reconnect;
 - the original failed Run remains immutable after recovery;
 - desktop and mobile browser acceptance passes;
 - `pnpm build`, unit tests, API integration tests, and browser tests pass;
 - the README documents architecture, supported nodes, local startup, demo flow, and current extension boundaries.
-
