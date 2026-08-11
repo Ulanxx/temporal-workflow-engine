@@ -35,6 +35,11 @@ pnpm start:designer
 brew install temporal
 ```
 
+默认开发端口：
+
+- API：`http://localhost:4311`，可用 `PORT=4312 pnpm start:api` 覆盖
+- Designer：`http://localhost:3000`，默认代理到 API；如 API 改端口，可用 `VITE_API_PROXY_TARGET=http://localhost:4312 pnpm start:designer` 覆盖
+
 ## 第一阶段要做什么
 
 1. 固化 workflow definition 和 step schema

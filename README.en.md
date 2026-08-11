@@ -35,6 +35,11 @@ pnpm start:designer
 brew install temporal
 ```
 
+Default dev ports:
+
+- API: `http://localhost:4311`, override with `PORT=4312 pnpm start:api`
+- Designer: `http://localhost:3000`, proxied to the API by default; if the API port changes, override with `VITE_API_PROXY_TARGET=http://localhost:4312 pnpm start:designer`
+
 ## Phase 1
 
 1. Lock the workflow definition and step schema
