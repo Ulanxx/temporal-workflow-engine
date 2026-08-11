@@ -5,7 +5,9 @@
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/types/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "npm run build:esm -- --watch",
     "build": "npm run build:esm && npm run build:cjs",
@@ -14,7 +16,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@temporalio/common": "^1.8.0"
+    "@temporalio/common": "^1.8.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.5.0",
