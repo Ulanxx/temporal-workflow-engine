@@ -16,7 +16,7 @@ async function run() {
     const worker = await Worker.create({
       connection,
       namespace: 'default',
-      taskQueue: 'rpa-task-queue',
+      taskQueue: 'workflow-engine-task-queue',
       workflowsPath: require.resolve('./workflows'),
       activities,
     });

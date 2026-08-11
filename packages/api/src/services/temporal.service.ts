@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { Connection, Client, WorkflowExecutionStatusName } from '@temporalio/client';
+import { Connection, Client } from '@temporalio/client';
 import { 
   WorkflowExecutionStatus, 
   Workflow,
   WorkflowExecution 
-} from '@temporal-rpa-engine/shared';
+} from '@temporal-workflow-engine/shared';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class TemporalService {
   private client: Client;
-  private readonly taskQueue = 'rpa-task-queue';
+  private readonly taskQueue = 'workflow-engine-task-queue';
 
   constructor() {
     this.init();
@@ -38,7 +38,7 @@ export class TemporalService {
   }
 
   /**
-   * 执行RPA工作流
+   * 执行工作流
    */
   async executeWorkflow(
     workflowId: string, 
@@ -55,9 +55,9 @@ export class TemporalService {
       const executionId = uuidv4();
       
       // 启动工作流执行
-      const handle = await this.client.workflow.start('executeRPAWorkflow', {
+      const handle = await this.client.workflow.start('executeWorkflowRun', {
         taskQueue: this.taskQueue,
-        workflowId: `rpa-workflow-${executionId}`,
+        workflowId: `workflow-run-${executionId}`,
         args: [{
           workflowId,
           executionId,
@@ -94,7 +94,7 @@ export class TemporalService {
         await this.init();
       }
 
-      const handle = await this.client.workflow.getHandle(`rpa-workflow-${executionId}`);
+      const handle = await this.client.workflow.getHandle(`workflow-run-${executionId}`);
       const description = await handle.describe();
 
       // 检查工作流状态
@@ -138,7 +138,7 @@ export class TemporalService {
         await this.init();
       }
 
-      const handle = await this.client.workflow.getHandle(`rpa-workflow-${executionId}`);
+      const handle = await this.client.workflow.getHandle(`workflow-run-${executionId}`);
       await handle.cancel();
       
       return true;

@@ -1,1 +1,1 @@
-export * from './rpa-workflow';
+export * from './workflow-run';

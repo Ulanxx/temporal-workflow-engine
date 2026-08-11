@@ -1,4 +1,4 @@
-import { WorkflowExecutionStatus } from '@temporal-rpa-engine/shared';
+import { WorkflowExecutionStatus } from '@temporal-workflow-engine/shared';
 
 /**
  * 执行脚本活动

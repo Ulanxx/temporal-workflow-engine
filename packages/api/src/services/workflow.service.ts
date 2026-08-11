@@ -4,7 +4,7 @@ import {
   Workflow, 
   WorkflowExecution,
   WorkflowExecutionStatus
-} from '@temporal-rpa-engine/shared';
+} from '@temporal-workflow-engine/shared';
 import { TemporalService } from './temporal.service';
 
 // 简单内存存储，实际项目应使用数据库

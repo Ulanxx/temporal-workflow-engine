@@ -4,7 +4,7 @@ import {
   WorkflowEdge,
   WorkflowExecution,
   WorkflowExecutionStatus 
-} from '@temporal-rpa-engine/shared';
+} from '@temporal-workflow-engine/shared';
 
 /**
  * 创建工作流DTO

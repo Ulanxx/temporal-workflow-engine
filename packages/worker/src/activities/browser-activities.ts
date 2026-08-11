@@ -1,4 +1,4 @@
-import { BrowserActionType } from '@temporal-rpa-engine/shared';
+import { BrowserActionType } from '@temporal-workflow-engine/shared';
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 
 // 存储浏览器实例

@@ -1,24 +1,24 @@
 import { Workflow, WorkflowExecution } from './types';
 
 /**
- * RPA工作流接口定义
+ * 工作流启动参数
  */
-export interface RPAWorkflowParams {
+export interface WorkflowRunParams {
   workflowId: string;
   input?: Record<string, any>;
 }
 
 /**
- * RPA工作流状态查询参数
+ * 工作流状态查询参数
  */
-export interface RPAWorkflowStatusParams {
+export interface WorkflowRunStatusParams {
   executionId: string;
 }
 
 /**
- * RPA工作流执行结果
+ * 工作流执行结果
  */
-export interface RPAWorkflowResult {
+export interface WorkflowRunResult {
   executionId: string;
   status: string;
   output?: Record<string, any>;
@@ -28,7 +28,7 @@ export interface RPAWorkflowResult {
 /**
  * 工作流相关活动接口
  */
-export interface RPAActivities {
+export interface WorkflowActivities {
   /**
    * 执行浏览器动作
    */

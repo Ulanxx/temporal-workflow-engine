@@ -1,15 +1,15 @@
 import { proxyActivities } from '@temporalio/workflow';
 import { 
-  NodeType, 
+  StepType, 
   BrowserActionType, 
-  WorkflowNode, 
+  WorkflowStep, 
   WorkflowEdge,
   WorkflowExecutionStatus,
-  RPAActivities
-} from '@temporal-rpa-engine/shared';
+  WorkflowActivities
+} from '@temporal-workflow-engine/shared';
 
-// 代理活动，让工作流能够调用到活动
-const activities = proxyActivities<RPAActivities>({
+// 代理活动，让 workflow 能调用 activity adapter。
+const activities = proxyActivities<WorkflowActivities>({
   startToCloseTimeout: '10 minutes',
   retry: {
     maximumAttempts: 3
@@ -17,22 +17,22 @@ const activities = proxyActivities<RPAActivities>({
 });
 
 /**
- * 根据工作流节点类型执行对应动作
+ * 根据工作流步骤类型执行对应动作
  */
 async function executeNode(
-  node: WorkflowNode, 
+  node: WorkflowStep, 
   input: Record<string, any> = {}
 ): Promise<any> {
   console.log(`执行节点: ${node.name} (${node.id})`);
   
   switch (node.type) {
-    case NodeType.START:
+    case StepType.START:
       return { success: true, message: '工作流开始' };
       
-    case NodeType.END:
+    case StepType.END:
       return { success: true, message: '工作流结束' };
       
-    case NodeType.BROWSER_ACTION:
+    case StepType.BROWSER_ACTION:
       const browserNode = node as any; // 类型转换
       return await activities.executeBrowserAction({
         actionType: browserNode.actionType,
@@ -43,12 +43,12 @@ async function executeNode(
         options: browserNode.options
       });
       
-    case NodeType.DELAY:
+    case StepType.DELAY:
       const delayNode = node as any; // 类型转换
       await activities.delay(delayNode.milliseconds || 1000);
       return { success: true, message: `延迟${delayNode.milliseconds || 1000}毫秒` };
       
-    case NodeType.API_CALL:
+    case StepType.API_CALL:
       const apiNode = node as any; // 类型转换
       return await activities.executeApiCall({
         url: apiNode.url,
@@ -57,14 +57,14 @@ async function executeNode(
         body: apiNode.body
       });
       
-    case NodeType.SCRIPT:
+    case StepType.SCRIPT:
       const scriptNode = node as any; // 类型转换
       return await activities.executeScript({
         code: scriptNode.code,
         context: { ...input, nodeId: node.id }
       });
       
-    case NodeType.DECISION:
+    case StepType.DECISION:
       // 决策节点在主工作流逻辑中处理
       return { success: true, nodeId: node.id };
       
@@ -94,13 +94,13 @@ function evaluateCondition(
 }
 
 /**
- * RPA工作流执行主函数
+ * 工作流执行主函数
  */
-export async function executeRPAWorkflow(
+export async function executeWorkflowRun(
   params: {
     workflowId: string;
     executionId: string;
-    nodes: WorkflowNode[];
+    nodes: WorkflowStep[];
     edges: WorkflowEdge[];
     input?: Record<string, any>;
   }
@@ -120,14 +120,14 @@ export async function executeRPAWorkflow(
     });
     
     // 找到开始节点
-    const startNode = nodes.find(node => node.type === NodeType.START);
+    const startNode = nodes.find(node => node.type === StepType.START);
     if (!startNode) {
       throw new Error('工作流缺少开始节点');
     }
     
     // 从开始节点执行
     let currentNodeId = startNode.id;
-    let currentNode = startNode;
+    let currentNode: WorkflowStep = startNode;
     
     // 执行工作流直到结束
     while (currentNode && !visitedNodes.has(currentNodeId)) {
@@ -143,17 +143,17 @@ export async function executeRPAWorkflow(
       results[currentNodeId] = nodeResult;
       
       // 如果是结束节点，结束工作流
-      if (currentNode.type === NodeType.END) {
+      if (currentNode.type === StepType.END) {
         break;
       }
       
       // 查找下一个节点
-      if (currentNode.type === NodeType.DECISION) {
+      if (currentNode.type === StepType.DECISION) {
         // 决策节点需要评估条件
         const outgoingEdges = edges.filter(edge => edge.source === currentNodeId);
         
         // 找到符合条件的边
-        let nextEdge = null;
+        let nextEdge: WorkflowEdge | null = null;
         for (const edge of outgoingEdges) {
           if (!edge.condition) {
             // 无条件边作为默认路径
@@ -188,10 +188,11 @@ export async function executeRPAWorkflow(
       }
       
       // 获取下一个节点
-      currentNode = nodes.find(node => node.id === currentNodeId);
-      if (!currentNode) {
+      const nextNode = nodes.find(node => node.id === currentNodeId);
+      if (!nextNode) {
         throw new Error(`找不到节点 ID: ${currentNodeId}`);
       }
+      currentNode = nextNode;
     }
     
     // 更新工作流状态为已完成

@@ -1,5 +1,5 @@
 {
-  "name": "@temporal-rpa-engine/designer",
+  "name": "@temporal-workflow-engine/designer",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,7 +13,7 @@
     "@ant-design/icons-svg": "^4.4.2",
     "@ant-design/react-slick": "^1.1.2",
     "@babel/runtime": "^7.27.1",
-    "@temporal-rpa-engine/shared": "workspace:*",
+    "@temporal-workflow-engine/shared": "workspace:*",
     "antd": "^5.11.0",
     "axios": "^1.6.0",
     "classnames": "^2.5.1",

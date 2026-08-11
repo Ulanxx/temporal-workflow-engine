@@ -1,4 +1,4 @@
-import { RPAActivities } from '@temporal-rpa-engine/shared';
+import { WorkflowActivities } from '@temporal-workflow-engine/shared';
 import { executeBrowserAction, closeBrowser } from './browser-activities';
 import { 
   executeScript, 
@@ -8,7 +8,7 @@ import {
 } from './utility-activities';
 
 // 导出活动
-export const activities: RPAActivities = {
+export const activities: WorkflowActivities = {
   executeBrowserAction,
   executeScript,
   executeApiCall,

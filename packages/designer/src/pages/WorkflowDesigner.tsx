@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Layout,
   Typography,
@@ -152,7 +152,7 @@ const WorkflowDesigner: React.FC = () => {
   };
 
   // 处理节点选择
-  const handleNodeSelect = (event: any, node: Node) => {
+  const handleNodeSelect = (_event: any, node: Node) => {
     setSelectedNode(node);
   };
 
@@ -190,7 +190,7 @@ const WorkflowDesigner: React.FC = () => {
         >
           <div style={{ display: "flex", alignItems: "center" }}>
             <Title level={3} style={{ margin: 0, color: token.colorPrimary }}>
-              {currentWorkflow?.name || "RPA 工作流设计器"}
+              {currentWorkflow?.name || "Workflow 设计器"}
             </Title>
             {currentWorkflow && (
               <Badge 

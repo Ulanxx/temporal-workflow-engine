@@ -41,7 +41,7 @@ start-all:
 
 # 帮助信息
 help:
-	@echo "Temporal RPA Engine 启动命令帮助："
+	@echo "Temporal Workflow Engine 启动命令帮助："
 	@echo "make install     - 安装所有依赖"
 	@echo "make temporal    - 仅启动Temporal开发服务器"
 	@echo "make api         - 仅启动API服务"

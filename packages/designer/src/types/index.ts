@@ -4,7 +4,7 @@ import {
   WorkflowNode as SharedWorkflowNode,
   WorkflowEdge as SharedWorkflowEdge,
   Workflow as SharedWorkflow
-} from '@temporal-rpa-engine/shared';
+} from '@temporal-workflow-engine/shared';
 
 // 导出共享类型
 export {

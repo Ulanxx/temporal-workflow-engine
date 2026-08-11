@@ -1,5 +1,5 @@
 {
-  "name": "@temporal-rpa-engine/shared",
+  "name": "@temporal-workflow-engine/shared",
   "version": "0.1.0",
   "private": true,
   "main": "./dist/cjs/index.js",

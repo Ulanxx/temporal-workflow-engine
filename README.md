@@ -1,126 +1,49 @@
-# Temporal RPA 引擎
+# Temporal Workflow Engine
 
-基于Temporal的RPA（机器人流程自动化）流程编排引擎，使用Playwright进行浏览器自动化。
+一个基于 Temporal 的 workflow engine，用来可靠执行 browser、script、HTTP、approval 这类步骤。
 
-## 项目架构
+它不是通用低代码平台，也不是只会点按钮的浏览器自动化 demo。这里的目标很直接：把一条业务流程跑完、跑稳、跑得能查。
 
-项目采用monorepo架构，包含以下主要模块：
+## 现在的边界
 
-- **设计器 (Designer)**: React前端应用，提供可视化工作流设计界面
-- **API服务 (API)**: NestJS应用，处理前端请求并与Temporal交互
-- **工作器 (Worker)**: Temporal Worker，执行RPA工作流和活动
-- **共享库 (Shared)**: 共享类型、接口和工具
+- Workflow 作为一等对象；
+- Run、Step、Activity、Artifact、Timeline 作为核心概念；
+- Playwright 只是 browser step 的一个 adapter；
+- Temporal 负责重试、取消、恢复和长流程调度；
+- Designer 只负责编辑和观察，不定义引擎核心。
 
-## 技术栈
+## 仓库结构
 
-- **前端**: React, TypeScript, Ant Design, React Flow
-- **后端**: NestJS, TypeScript
-- **工作流**: Temporal, TypeScript
-- **浏览器自动化**: Playwright
-- **包管理**: pnpm
+- `packages/shared`：共享类型、workflow definition、activity contract
+- `packages/api`：工作流 CRUD、启动、状态查询、取消
+- `packages/worker`：Temporal Worker 与 activity adapters
+- `packages/designer`：React Flow 设计器
 
-## 快速开始
-
-### make 命令
+## 本地启动
 
 ```bash
-make install
-make start-all
-
-# 查看帮助信息
-make help
-```
-
-### 安装依赖
-
-```bash
-# 安装工程依赖
 pnpm install
-```
-
-### 运行Temporal服务
-
-Temporal是工作流引擎的核心组件，需要先启动Temporal服务。
-
-```bash
-# 启动Temporal服务（开发模式）
 pnpm temporal:dev-server
-```
-
-该命令将启动一个本地Temporal开发服务器，数据将保存在`temporal.db`文件中。
-
-### 启动API服务
-
-```bash
 pnpm start:api
-```
-
-API服务将在 http://localhost:3001 上运行，提供REST API接口。
-
-### 启动Worker
-
-```bash
 pnpm start:worker
-```
-
-Worker将连接到Temporal服务并注册工作流和活动。
-
-### 启动前端设计器
-
-```bash
 pnpm start:designer
 ```
 
-设计器将在 http://localhost:3000 上运行。
+## 第一阶段要做什么
 
-## 功能特点
+1. 固化 workflow definition 和 step schema
+2. 让 run 有完整 timeline 和 artifact
+3. 把 browser/script/http/approval 统一成 activity adapter
+4. 把状态存储从内存换成持久层
+5. 让 Designer 可以编辑、启动、查看失败点
 
-- 可视化工作流设计器，支持拖拽节点和连线
-- 支持多种RPA操作类型：
-  - 浏览器操作（导航、点击、输入等）
-  - 延迟
-  - API调用
-  - JavaScript脚本执行
-  - 条件分支
-- 工作流执行状态监控
-- 基于Temporal的可靠工作流执行
-  - 支持长时间运行的工作流
-  - 自动重试失败的活动
-  - 工作流执行历史记录
+## 相关术语
 
-## 配置
+- workflow：流程定义
+- run：一次执行
+- step：一个步骤
+- adapter：一个可插拔执行方式
 
-### API服务配置
+## 许可
 
-编辑 `packages/api/src/main.ts` 文件，可以修改端口等配置。
-
-### Worker配置
-
-编辑 `packages/worker/src/worker.ts` 文件，可以修改Temporal连接等配置。
-
-### 设计器配置
-
-编辑 `packages/designer/vite.config.ts` 文件，可以修改前端服务配置。
-
-## 开发指南
-
-### 创建新节点类型
-
-1. 在 `packages/shared/src/types.ts` 文件中添加新的节点类型
-2. 在 `packages/worker/src/workflows/rpa-workflow.ts` 中实现处理逻辑
-3. 在设计器中添加节点UI和属性表单
-
-### 添加新的浏览器活动
-
-1. 在 `packages/shared/src/types.ts` 文件中添加新的浏览器动作类型
-2. 在 `packages/worker/src/activities/browser-activities.ts` 中实现浏览器活动
-3. 在设计器的表单中添加新的选项和对应属性
-
-## 后续改进方向
-
-- 增加用户认证和权限控制
-- 添加更多浏览器自动化操作
-- 支持工作流导入/导出
-- 添加数据存储（替代内存存储）
-- 增加错误处理和日志记录
-- 添加更多UI组件和自定义样式支持
+MIT

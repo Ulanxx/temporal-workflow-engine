@@ -1,20 +1,19 @@
 {
-  "name": "temporal-rpa-engine",
+  "name": "temporal-workflow-engine",
   "version": "0.1.0",
   "private": true,
-  "description": "RPA流程编排引擎基于Temporal和Playwright",
+  "description": "Temporal workflow engine for browser, script, HTTP, and approval steps",
   "scripts": {
-    "dev": "pnpm --filter @temporal-rpa-engine/* run dev",
-    "build": "pnpm --filter @temporal-rpa-engine/* run build",
-    "start:api": "pnpm --filter @temporal-rpa-engine/api run start:dev",
-    "start:worker": "pnpm --filter @temporal-rpa-engine/worker run start:dev",
-    "start:designer": "pnpm --filter @temporal-rpa-engine/designer run dev",
+    "dev": "pnpm --filter @temporal-workflow-engine/* run dev",
+    "build": "pnpm --filter @temporal-workflow-engine/* run build",
+    "start:api": "pnpm --filter @temporal-workflow-engine/api run start:dev",
+    "start:worker": "pnpm --filter @temporal-workflow-engine/worker run start:dev",
+    "start:designer": "pnpm --filter @temporal-workflow-engine/designer run dev",
     "format": "prettier --write \"**/*.{ts,tsx,json}\"",
     "temporal:dev-server": "temporal server start-dev --db-filename temporal.db"
   },
   "keywords": [
     "temporal",
-    "rpa",
     "workflow",
     "playwright",
     "nestjs",

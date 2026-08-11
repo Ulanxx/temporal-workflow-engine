@@ -1,7 +1,9 @@
 /**
- * RPA节点类型枚举
+ * 工作流步骤类型。
+ *
+ * Browser 只是一个 adapter，不再定义整个项目的边界。
  */
-export enum NodeType {
+export enum StepType {
   START = 'start',
   END = 'end',
   TASK = 'task',
@@ -27,16 +29,21 @@ export enum BrowserActionType {
 }
 
 /**
- * 工作流节点基本接口
+ * 工作流步骤基本接口
  */
-export interface WorkflowNode {
+export interface WorkflowStep {
   id: string;
-  type: NodeType;
+  type: StepType;
   name: string;
   description?: string;
   position: {
     x: number;
     y: number;
+  };
+  timeoutMs?: number;
+  retry?: {
+    maximumAttempts?: number;
+    backoffMs?: number;
   };
 }
 
@@ -54,8 +61,8 @@ export interface WorkflowEdge {
 /**
  * 浏览器动作节点
  */
-export interface BrowserActionNode extends WorkflowNode {
-  type: NodeType.BROWSER_ACTION;
+export interface BrowserActionStep extends WorkflowStep {
+  type: StepType.BROWSER_ACTION;
   actionType: BrowserActionType;
   selector?: string;
   url?: string;
@@ -72,7 +79,7 @@ export interface Workflow {
   name: string;
   description?: string;
   version: string;
-  nodes: WorkflowNode[];
+  nodes: WorkflowStep[];
   edges: WorkflowEdge[];
   createdAt: string;
   updatedAt: string;
@@ -101,3 +108,8 @@ export interface WorkflowExecution {
   result?: any;
   error?: string;
 }
+
+// Backward-compatible aliases while the designer is still node-based.
+export { StepType as NodeType };
+export type WorkflowNode = WorkflowStep;
+export type BrowserActionNode = BrowserActionStep;
