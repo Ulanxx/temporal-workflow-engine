@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import * as schema from './schema';
 
@@ -10,8 +10,17 @@ export interface PersistenceDatabase {
   close(): void;
 }
 
+function findWorkspaceRoot(start = process.cwd()): string {
+  let current = resolve(start);
+  while (dirname(current) !== current) {
+    if (existsSync(resolve(current, 'pnpm-workspace.yaml'))) return current;
+    current = dirname(current);
+  }
+  return resolve(start);
+}
+
 export function getDefaultDatabasePath(): string {
-  return process.env.WORKFLOW_ENGINE_DB_PATH ?? resolve(process.cwd(), '.runtime', 'workflow-engine.sqlite');
+  return process.env.WORKFLOW_ENGINE_DB_PATH ?? resolve(findWorkspaceRoot(), '.runtime', 'workflow-engine.sqlite');
 }
 
 export function createPersistenceDatabase(filePath = getDefaultDatabasePath()): PersistenceDatabase {

@@ -48,6 +48,14 @@ export async function executeApiCall(params: {
   const { url, method, headers = {}, body } = params;
   
   try {
+    if (url.startsWith('mock://')) {
+      return {
+        success: true,
+        status: 200,
+        data: { mocked: true, url, method, body },
+      };
+    }
+
     const response = await fetch(url, {
       method,
       headers: {

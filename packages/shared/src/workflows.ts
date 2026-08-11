@@ -1,4 +1,14 @@
-import { Workflow, WorkflowExecution } from './types';
+import {
+  JsonObject,
+  JsonValue,
+  NodeType,
+  RunStatus,
+  StepInvocation,
+  StepStatus,
+  Workflow,
+  WorkflowDefinition,
+  WorkflowExecution,
+} from './types';
 
 /**
  * 工作流启动参数
@@ -23,6 +33,43 @@ export interface WorkflowRunResult {
   status: string;
   output?: Record<string, any>;
   error?: string;
+}
+
+/** Immutable execution payload passed from the API to Temporal. */
+export interface GraphRunParams {
+  runId: string;
+  workflowId: string;
+  versionId: string;
+  definition: WorkflowDefinition;
+  input: JsonObject;
+}
+
+export interface GraphRunResult {
+  runId: string;
+  workflowId: string;
+  versionId: string;
+  status: RunStatus;
+  output?: JsonValue;
+  failureMessage?: string;
+}
+
+export interface WorkflowNodeExecutionRequest {
+  nodeId: string;
+  type: NodeType;
+  name: string;
+  config: JsonObject;
+  input: JsonObject;
+}
+
+export interface WorkflowNodeExecutionResult {
+  output: JsonValue;
+}
+
+export interface InvocationTransition {
+  invocation: StepInvocation;
+  status: StepStatus;
+  event: 'queued' | 'started' | 'waiting' | 'completed' | 'failed' | 'skipped';
+  payload?: JsonObject;
 }
 
 /**
@@ -72,5 +119,29 @@ export interface WorkflowActivities {
     status: string;
     result?: any;
     error?: string;
+  }): Promise<void>;
+
+  executeWorkflowNode(params: WorkflowNodeExecutionRequest): Promise<WorkflowNodeExecutionResult>;
+
+  markRunStarted(params: { runId: string }): Promise<void>;
+
+  markRunCompleted(params: { runId: string; output: JsonValue }): Promise<void>;
+
+  markRunFailed(params: { runId: string; failureMessage: string }): Promise<void>;
+
+  transitionInvocation(params: InvocationTransition): Promise<void>;
+
+  createRunWait(params: {
+    runId: string;
+    invocationId: string;
+    nodeId: string;
+    type: 'approval' | 'information';
+    expiresAt?: string;
+  }): Promise<void>;
+
+  resolveRunWait(params: {
+    runId: string;
+    invocationId: string;
+    response: JsonValue;
   }): Promise<void>;
 }

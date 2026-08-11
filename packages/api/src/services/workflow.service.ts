@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   JsonObject,
   nodeCatalog,
@@ -123,23 +124,28 @@ export class WorkflowService implements OnModuleDestroy {
   }
 
   async executeWorkflow(workflowId: string, input?: Record<string, unknown>): Promise<WorkflowExecution> {
-    const workflow = this.toLegacyWorkflow(workflowId);
-    if (!workflow) throw new Error('工作流不存在。');
-    const execution = await this.temporalService.executeWorkflow(workflowId, workflow, input);
     const asset = this.repository.getWorkflow(workflowId)!;
+    if (!asset) throw new Error('工作流不存在。');
     let version = asset.publishedVersionId ? this.repository.getVersion(asset.publishedVersionId) : undefined;
     if (!version) version = this.repository.publishDraft(workflowId);
+    const executionId = randomUUID();
     this.repository.createRun({
-      id: execution.id,
+      id: executionId,
       workflowId,
       versionId: version.id,
       definitionChecksum: version.checksum,
       status: RunStatus.PENDING,
       triggerType: NodeType.MANUAL_TRIGGER,
       input: (input ?? {}) as JsonObject,
-      temporalWorkflowId: `workflow-run-${execution.id}`,
+      temporalWorkflowId: `workflow-run-${executionId}`,
     });
-    return execution;
+    try {
+      return await this.temporalService.executeWorkflow(workflowId, version, executionId, input ?? {});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.repository.updateRun(executionId, { status: RunStatus.FAILED, failureMessage: message, endedAt: new Date().toISOString() });
+      throw error;
+    }
   }
 
   async getWorkflowExecutions(workflowId: string): Promise<WorkflowExecution[]> {
@@ -151,6 +157,26 @@ export class WorkflowService implements OnModuleDestroy {
     const run = this.repository.getRun(executionId);
     if (!run) return null;
     return { id: run.id, workflowId: run.workflowId, status: run.status as unknown as WorkflowExecutionStatus, startTime: run.createdAt, endTime: run.endedAt, result: run.output, error: run.failureMessage };
+  }
+
+  getRunEvents(executionId: string, afterSequence = 0) {
+    if (!this.repository.getRun(executionId)) throw new Error('执行记录不存在。');
+    return this.repository.listRunEvents(executionId, afterSequence);
+  }
+
+  getRunSteps(executionId: string) {
+    if (!this.repository.getRun(executionId)) throw new Error('执行记录不存在。');
+    return this.repository.listStepInvocations(executionId);
+  }
+
+  getRunWaits(executionId: string) {
+    if (!this.repository.getRun(executionId)) throw new Error('执行记录不存在。');
+    return this.repository.listRunWaits(executionId);
+  }
+
+  async resolveApproval(executionId: string, invocationId: string, response: unknown): Promise<void> {
+    if (!this.repository.getRun(executionId)) throw new Error('执行记录不存在。');
+    await this.temporalService.resolveApproval(executionId, invocationId, response);
   }
 
   async getWorkflowStatus(executionId: string): Promise<WorkflowExecution> {

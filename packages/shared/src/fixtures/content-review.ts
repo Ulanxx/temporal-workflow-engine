@@ -8,7 +8,7 @@ export const contentReviewWorkflowDefinition: WorkflowDefinition = {
     { id: 'analyze', type: NodeType.MODEL, name: '风险与质量分析', position: { x: 440, y: 160 }, config: { model: 'gpt-5-mini', input: '{{ steps.validate.output }}', responseFormat: 'json' } },
     { id: 'route', type: NodeType.CONDITION, name: '风险分流', position: { x: 660, y: 160 }, config: { expression: 'steps.analyze.output.score >= 0.82' } },
     { id: 'approval', type: NodeType.APPROVAL, name: '人工复核', position: { x: 880, y: 280 }, config: { assignee: '内容运营组', timeoutHours: 24 } },
-    { id: 'publish', type: NodeType.HTTP, name: '发布内容', position: { x: 880, y: 60 }, config: { method: 'POST', url: 'https://example.invalid/content/publish', headers: '{}', body: '{{ steps.analyze.output }}' } },
+    { id: 'publish', type: NodeType.HTTP, name: '发布内容', position: { x: 880, y: 60 }, config: { method: 'POST', url: 'mock://content/publish', headers: '{}', body: '{{ steps.analyze.output }}' } },
     { id: 'notify', type: NodeType.NOTIFICATION, name: '通知结果', position: { x: 1100, y: 160 }, config: { channel: 'console', target: 'content-review', message: '{{ steps.analyze.output }}' } },
     { id: 'end', type: NodeType.END, name: '完成', position: { x: 1320, y: 160 }, config: { outcome: 'success' } },
   ],

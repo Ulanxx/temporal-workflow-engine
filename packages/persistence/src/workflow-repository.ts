@@ -4,11 +4,15 @@ import {
   checksumDefinition,
   contentReviewWorkflowDefinition,
   JsonObject,
+  JsonValue,
   NodeType,
   Run,
   RunEvent,
   RunEventType,
   RunStatus,
+  StepInvocation,
+  StepStatus,
+  RunWait,
   ValidationResult,
   WorkflowAsset,
   WorkflowDefinition,
@@ -77,6 +81,36 @@ interface EventRow {
   idempotency_key: string;
   payload_json: string;
   created_at: string;
+}
+
+interface StepRow {
+  id: string;
+  run_id: string;
+  node_id: string;
+  branch_path_json: string;
+  iteration_path_json: string;
+  status: StepStatus;
+  attempt: number;
+  input_json: string | null;
+  output_json: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+interface WaitRow {
+  id: string;
+  run_id: string;
+  invocation_id: string;
+  node_id: string;
+  type: RunWait['type'];
+  status: RunWait['status'];
+  response_schema_json: string | null;
+  response_json: string | null;
+  expires_at: string | null;
+  created_at: string;
+  resolved_at: string | null;
 }
 
 export class DraftConflictError extends Error {
@@ -167,6 +201,40 @@ function toEvent(row: EventRow): RunEvent {
     idempotencyKey: row.idempotency_key,
     payload: parseJson<JsonObject>(row.payload_json),
     createdAt: row.created_at,
+  };
+}
+
+function toStep(row: StepRow): StepInvocation {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    nodeId: row.node_id,
+    branchPath: parseJson<string[]>(row.branch_path_json),
+    iterationPath: parseJson<number[]>(row.iteration_path_json),
+    status: row.status,
+    attempt: row.attempt,
+    input: row.input_json ? parseJson(row.input_json) : undefined,
+    output: row.output_json ? parseJson(row.output_json) : undefined,
+    failureCode: row.failure_code ?? undefined,
+    failureMessage: row.failure_message ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+  };
+}
+
+function toWait(row: WaitRow): RunWait {
+  return {
+    id: row.id,
+    runId: row.run_id,
+    invocationId: row.invocation_id,
+    nodeId: row.node_id,
+    type: row.type,
+    status: row.status,
+    responseSchema: row.response_schema_json ? parseJson<JsonObject>(row.response_schema_json) : undefined,
+    response: row.response_json ? parseJson(row.response_json) : undefined,
+    expiresAt: row.expires_at ?? undefined,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? undefined,
   };
 }
 
@@ -298,6 +366,85 @@ export class WorkflowRepository {
   getRun(runId: string): Run | undefined {
     const row = this.database.client.prepare('SELECT * FROM runs WHERE id = ?').get(runId) as RunRow | undefined;
     return row ? toRun(row) : undefined;
+  }
+
+  updateRun(runId: string, patch: Partial<Pick<Run, 'status' | 'output' | 'failureCode' | 'failureMessage' | 'startedAt' | 'endedAt'>>): Run {
+    const current = this.getRun(runId);
+    if (!current) throw new Error('运行记录不存在。');
+    const next = { ...current, ...patch };
+    this.database.client.prepare(`
+      UPDATE runs SET status = ?, output_json = ?, failure_code = ?, failure_message = ?, started_at = ?, ended_at = ? WHERE id = ?
+    `).run(
+      next.status,
+      next.output === undefined ? null : JSON.stringify(next.output),
+      next.failureCode ?? null,
+      next.failureMessage ?? null,
+      next.startedAt ?? null,
+      next.endedAt ?? null,
+      runId,
+    );
+    return this.getRun(runId)!;
+  }
+
+  upsertStepInvocation(invocation: StepInvocation): StepInvocation {
+    this.database.client.prepare(`
+      INSERT INTO run_steps (id, run_id, node_id, branch_path_json, iteration_path_json, status, attempt, input_json, output_json,
+        failure_code, failure_message, started_at, ended_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(run_id, id) DO UPDATE SET
+        status = excluded.status,
+        attempt = excluded.attempt,
+        input_json = excluded.input_json,
+        output_json = excluded.output_json,
+        failure_code = excluded.failure_code,
+        failure_message = excluded.failure_message,
+        started_at = excluded.started_at,
+        ended_at = excluded.ended_at
+    `).run(
+      invocation.id, invocation.runId, invocation.nodeId, JSON.stringify(invocation.branchPath), JSON.stringify(invocation.iterationPath),
+      invocation.status, invocation.attempt, invocation.input === undefined ? null : JSON.stringify(invocation.input),
+      invocation.output === undefined ? null : JSON.stringify(invocation.output), invocation.failureCode ?? null,
+      invocation.failureMessage ?? null, invocation.startedAt ?? null, invocation.endedAt ?? null,
+    );
+    const row = this.database.client.prepare('SELECT * FROM run_steps WHERE run_id = ? AND id = ?').get(invocation.runId, invocation.id) as StepRow;
+    return toStep(row);
+  }
+
+  listStepInvocations(runId: string): StepInvocation[] {
+    const rows = this.database.client.prepare('SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at, id').all(runId) as StepRow[];
+    return rows.map(toStep);
+  }
+
+  createRunWait(input: Omit<RunWait, 'id' | 'createdAt'> & Partial<Pick<RunWait, 'id' | 'createdAt'>>): RunWait {
+    const id = input.id ?? randomUUID();
+    const createdAt = input.createdAt ?? now();
+    this.database.client.prepare(`
+      INSERT INTO run_waits (id, run_id, invocation_id, node_id, type, status, response_schema_json, response_json, expires_at, created_at, resolved_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(run_id, invocation_id) DO NOTHING
+    `).run(id, input.runId, input.invocationId, input.nodeId, input.type, input.status,
+      input.responseSchema === undefined ? null : JSON.stringify(input.responseSchema),
+      input.response === undefined ? null : JSON.stringify(input.response), input.expiresAt ?? null, createdAt, input.resolvedAt ?? null);
+    return this.getRunWait(input.runId, input.invocationId)!;
+  }
+
+  getRunWait(runId: string, invocationId: string): RunWait | undefined {
+    const row = this.database.client.prepare('SELECT * FROM run_waits WHERE run_id = ? AND invocation_id = ?').get(runId, invocationId) as WaitRow | undefined;
+    return row ? toWait(row) : undefined;
+  }
+
+  listRunWaits(runId: string): RunWait[] {
+    const rows = this.database.client.prepare('SELECT * FROM run_waits WHERE run_id = ? ORDER BY created_at').all(runId) as WaitRow[];
+    return rows.map(toWait);
+  }
+
+  resolveRunWait(runId: string, invocationId: string, response: JsonValue): RunWait {
+    const result = this.database.client.prepare(`
+      UPDATE run_waits SET status = 'resolved', response_json = ?, resolved_at = ?
+      WHERE run_id = ? AND invocation_id = ? AND status = 'pending'
+    `).run(JSON.stringify(response), now(), runId, invocationId);
+    if (result.changes === 0) throw new Error('等待项不存在或已经处理。');
+    return this.getRunWait(runId, invocationId)!;
   }
 
   listRunEvents(runId: string, afterSequence = 0): RunEvent[] {

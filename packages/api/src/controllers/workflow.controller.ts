@@ -6,6 +6,7 @@ import {
   Delete, 
   Body, 
   Param, 
+  Query,
   HttpException, 
   HttpStatus 
 } from '@nestjs/common';
@@ -229,6 +230,47 @@ export class WorkflowController {
         `获取工作流状态失败: ${error.message}`, 
         HttpStatus.INTERNAL_SERVER_ERROR
       );
+    }
+  }
+
+  @Get('executions/:executionId/events')
+  getRunEvents(@Param('executionId') executionId: string, @Query('after') after?: string) {
+    try {
+      return this.workflowService.getRunEvents(executionId, Number(after ?? 0));
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  @Get('executions/:executionId/steps')
+  getRunSteps(@Param('executionId') executionId: string) {
+    try {
+      return this.workflowService.getRunSteps(executionId);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  @Get('executions/:executionId/waits')
+  getRunWaits(@Param('executionId') executionId: string) {
+    try {
+      return this.workflowService.getRunWaits(executionId);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.NOT_FOUND);
+    }
+  }
+
+  @Post('executions/:executionId/waits/:invocationId/resolve')
+  async resolveApproval(
+    @Param('executionId') executionId: string,
+    @Param('invocationId') invocationId: string,
+    @Body() body: { response: unknown },
+  ) {
+    try {
+      await this.workflowService.resolveApproval(executionId, invocationId, body.response);
+      return { success: true };
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
   }
 

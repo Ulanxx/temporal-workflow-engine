@@ -2,10 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Connection, Client } from '@temporalio/client';
 import { 
   WorkflowExecutionStatus, 
-  Workflow,
-  WorkflowExecution 
+  WorkflowExecution,
+  WorkflowVersion,
 } from '@temporal-workflow-engine/shared';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class TemporalService {
@@ -41,26 +40,24 @@ export class TemporalService {
    */
   async executeWorkflow(
     workflowId: string, 
-    workflow: Workflow, 
-    input?: Record<string, any>
+    version: WorkflowVersion,
+    executionId: string,
+    input: Record<string, any> = {},
   ): Promise<WorkflowExecution> {
     try {
       // 确保客户端已初始化
       const client = await this.requireClient();
 
-      // 生成执行ID
-      const executionId = uuidv4();
-      
       // 启动工作流执行
       const handle = await client.workflow.start('executeWorkflowRun', {
         taskQueue: this.taskQueue,
         workflowId: `workflow-run-${executionId}`,
         args: [{
+          runId: executionId,
           workflowId,
-          executionId,
-          nodes: workflow.nodes,
-          edges: workflow.edges,
-          input
+          versionId: version.id,
+          definition: version.definition,
+          input,
         }],
       });
 
@@ -139,6 +136,12 @@ export class TemporalService {
       console.error('取消工作流失败:', error);
       throw error;
     }
+  }
+
+  async resolveApproval(executionId: string, invocationId: string, response: unknown): Promise<void> {
+    const client = await this.requireClient();
+    const handle = client.workflow.getHandle(`workflow-run-${executionId}`);
+    await handle.signal('resolveApproval', { invocationId, response });
   }
 
   private async requireClient(): Promise<Client> {

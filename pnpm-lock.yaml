@@ -175,6 +175,9 @@ importers:
 
   packages/worker:
     dependencies:
+      '@temporal-workflow-engine/persistence':
+        specifier: workspace:*
+        version: link:../persistence
       '@temporal-workflow-engine/shared':
         specifier: workspace:*
         version: link:../shared
