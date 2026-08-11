@@ -29,6 +29,13 @@ pnpm start:worker
 pnpm start:designer
 ```
 
+也可以让 Makefile 在独立 Terminal 窗口里一次性拉起：
+
+```bash
+make start-all
+make stop-all
+```
+
 `pnpm temporal:dev-server` 需要本机安装 Temporal CLI。macOS 可用：
 
 ```bash

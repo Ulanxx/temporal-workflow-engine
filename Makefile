@@ -1,4 +1,4 @@
-.PHONY: all install temporal api worker designer start-all
+.PHONY: all install temporal api worker designer start-all stop-all
 
 # 默认目标，运行所有服务
 all: start-all
@@ -25,19 +25,11 @@ designer:
 
 # 一键启动所有服务（使用多个终端会话）
 start-all:
-	@echo "Starting all services..."
-	@echo "Starting Temporal Server..."
-	@osascript -e 'tell application "Terminal" to do script "cd $(CURDIR) && make temporal"' &
-	@sleep 3
-	@echo "Starting API Service..."
-	@osascript -e 'tell application "Terminal" to do script "cd $(CURDIR) && make api"' &
-	@sleep 2
-	@echo "Starting Worker..."
-	@osascript -e 'tell application "Terminal" to do script "cd $(CURDIR) && make worker"' &
-	@sleep 2
-	@echo "Starting Designer..."
-	@osascript -e 'tell application "Terminal" to do script "cd $(CURDIR) && make designer"' &
-	@echo "All services started in separate terminal windows!"
+	node scripts/dev-windows.mjs start
+
+# 停止所有服务并关闭 make start-all 打开的终端窗口
+stop-all:
+	node scripts/dev-windows.mjs stop
 
 # 帮助信息
 help:
@@ -48,4 +40,5 @@ help:
 	@echo "make worker      - 仅启动Worker服务"
 	@echo "make designer    - 仅启动前端设计器，默认 http://localhost:3000"
 	@echo "make start-all   - 一键启动所有服务（在不同终端窗口中）"
+	@echo "make stop-all    - 停止所有服务并关闭 make start-all 打开的终端窗口"
 	@echo "make help        - 显示此帮助信息"

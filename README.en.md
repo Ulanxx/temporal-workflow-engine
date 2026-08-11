@@ -29,6 +29,13 @@ pnpm start:worker
 pnpm start:designer
 ```
 
+Or use the Makefile to start them in separate Terminal windows:
+
+```bash
+make start-all
+make stop-all
+```
+
 `pnpm temporal:dev-server` requires the Temporal CLI. On macOS:
 
 ```bash

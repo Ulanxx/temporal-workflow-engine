@@ -63,6 +63,9 @@ playwright/.cache/
 # Temporal specific
 .temporal/
 
+# Local dev window state
+.dev/
+
 # Package specific
 packages/*/dist/
 packages/*/node_modules/
